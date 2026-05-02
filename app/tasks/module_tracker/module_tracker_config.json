@@ -1,0 +1,11 @@
+{
+  "camera_angle_deg": 0.919998,
+  "camera_height_offset": 0.5,
+  "map_scale_m": 8.0,
+  "default_module": {
+    "width": 0.4,
+    "height": 0.3,
+    "length": 0.2
+  },
+  "modules": {}
+}
