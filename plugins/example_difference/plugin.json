@@ -1,0 +1,9 @@
+{
+    "name":         "example_difference",
+    "label":        "Difference",
+    "icon":         "◈",
+    "version":      "1.0.0",
+    "panel_module": "panel",
+    "panel_class":  "DifferencePanel",
+    "description":  "Frame-difference motion detector. Reference plugin for SDK developers."
+}

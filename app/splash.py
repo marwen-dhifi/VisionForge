@@ -176,6 +176,12 @@ class SplashScreen(QWidget):
 
     def _on_loader_finished(self):
         self._bar.setValue(100)
+        self._status.setText("Scanning plugins…")
+        try:
+            from VisionForge.app.plugin_sdk.loader import get_plugin_loader
+            get_plugin_loader().scan()
+        except Exception as exc:
+            print(f"[Splash] Plugin scan error: {exc}", flush=True)
         self._status.setText("Ready.")
         QTimer.singleShot(350, self._finish)
 

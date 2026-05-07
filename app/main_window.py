@@ -24,6 +24,7 @@ from VisionForge.app.core.gamepad_controller import GamepadController
 from VisionForge.app.tasks.valve_orientation.panel import ValveOrientationPanel
 from VisionForge.app.tasks.seven_segment.panel    import SevenSegmentPanel
 from VisionForge.app.tasks.module_tracker.panel   import ModuleTrackerPanel
+from VisionForge.app.plugin_sdk.loader import get_plugin_loader
 
 
 class MainWindow(QMainWindow):
@@ -68,9 +69,6 @@ class MainWindow(QMainWindow):
         body_lo.setContentsMargins(0, 0, 0, 0)
         body_lo.setSpacing(0)
 
-        self._sidebar = Sidebar()
-        body_lo.addWidget(self._sidebar)
-
         # ── Page stack ───────────────────────────────────────────────────────
         self._stack = QStackedWidget()
         self._stack.setStyleSheet("background-color: #060612;")
@@ -95,6 +93,33 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._seg_panel)      # index 3
         self._stack.addWidget(self._tracker_panel)  # index 4
 
+        # ── Plugin panels (indices 5+) ────────────────────────────────────────
+        self._plugin_panels: list = []
+        _plugin_sidebar_items: list = []
+
+        for descriptor in get_plugin_loader().plugins:
+            try:
+                panel = descriptor.PanelClass(
+                    camera_client=self._cam,
+                    arm_controller=self._arm,
+                )
+                panel.on_attach()
+                idx = self._stack.addWidget(panel)
+                self._plugin_panels.append(panel)
+                _plugin_sidebar_items.append({
+                    "icon":  descriptor.manifest.icon,
+                    "label": descriptor.manifest.label,
+                    "index": idx,
+                })
+            except Exception as exc:
+                print(
+                    f"[MainWindow] Plugin '{descriptor.manifest.name}' failed to init: {exc}",
+                    flush=True,
+                )
+
+        # Sidebar built AFTER all plugin indices are known
+        self._sidebar = Sidebar(plugin_items=_plugin_sidebar_items)
+        body_lo.addWidget(self._sidebar)
         body_lo.addWidget(self._stack, 1)
         root_lo.addWidget(body, 1)
 
@@ -149,6 +174,9 @@ class MainWindow(QMainWindow):
                 cam.raw_frame_received.connect(self._tracker_panel._processor.submit_frame)
             except Exception:
                 pass
+        for panel in self._plugin_panels:
+            try: panel.attach_camera(cam)
+            except Exception: pass
 
     # ── Arm wiring ────────────────────────────────────────────────────────────
 
@@ -164,6 +192,9 @@ class MainWindow(QMainWindow):
         self._tracker_panel._arm = arm
         arm.position_updated.connect(self._tracker_panel._on_arm_position)
         arm.connection_changed.connect(self._tracker_panel._on_arm_connection_changed)
+        for panel in self._plugin_panels:
+            try: panel.attach_arm(arm)
+            except Exception: pass
 
     # ── Reconnection ─────────────────────────────────────────────────────────
 
@@ -233,6 +264,9 @@ class MainWindow(QMainWindow):
         self._valve_panel.cleanup()
         self._seg_panel.cleanup()
         self._tracker_panel.cleanup()
+        for panel in self._plugin_panels:
+            try: panel.cleanup()
+            except Exception: pass
         if self._cam:
             self._cam.cleanup()
         if self._arm:

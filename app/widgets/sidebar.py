@@ -41,9 +41,9 @@ _SUB_ICON_X  = 30     # indented icon position for sub-items
 _SUB_LABEL_X = 52     # indented label position for sub-items
 
 
-def _nav_width() -> int:
+def _nav_width(task_items: list) -> int:
     fm = QFontMetrics(QFont("Segoe UI", 12, QFont.Weight.DemiBold))
-    all_labels = [it["label"] for it in _TOP_ITEMS + _TASK_ITEMS] + ["Tasks"]
+    all_labels = [it["label"] for it in _TOP_ITEMS + task_items] + ["Tasks"]
     max_text = max(fm.horizontalAdvance(lbl) for lbl in all_labels)
     return _LABEL_X + max_text + _RIGHT_PAD + 18   # +18 for the arrow glyph
 
@@ -285,14 +285,15 @@ class _CollapseStrip(QWidget):
 class Sidebar(QWidget):
     page_changed = Signal(int)
 
-    _TASK_INDICES = {it["index"] for it in _TASK_ITEMS}
-
-    def __init__(self, parent=None):
+    def __init__(self, plugin_items: list = None, parent=None):
         super().__init__(parent)
         self._nav_btns:  list[_NavButton]    = []
         self._sub_btns:  list[_SubNavButton] = []
         self._collapsed  = False
-        self._nav_w      = _nav_width()
+        _extra             = plugin_items or []
+        self._task_items   = list(_TASK_ITEMS) + _extra
+        self._task_indices = {it["index"] for it in self._task_items}
+        self._nav_w        = _nav_width(self._task_items)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -330,7 +331,7 @@ class Sidebar(QWidget):
         nav_lo.addWidget(self._group_btn)
 
         # Task sub-buttons (hidden until group is expanded)
-        for item in _TASK_ITEMS:
+        for item in self._task_items:
             btn = _SubNavButton(item["icon"], item["label"], item["index"])
             btn.clicked.connect(self._select)
             btn.setVisible(False)
@@ -377,7 +378,7 @@ class Sidebar(QWidget):
         for btn in self._sub_btns:
             btn.set_selected(btn._index == index)
 
-        is_task = index in self._TASK_INDICES
+        is_task = index in self._task_indices
         self._group_btn.set_child_selected(is_task)
 
         # Auto-expand the group when a task is selected
