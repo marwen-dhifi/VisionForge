@@ -50,6 +50,7 @@ def build(version: str):
         _empty_init(zf, f"{top}/VisionForge/app/__init__.py")
         _empty_init(zf, f"{top}/VisionForge/app/core/__init__.py")
         _empty_init(zf, f"{top}/VisionForge/app/styles/__init__.py")
+        _empty_init(zf, f"{top}/VisionForge/app/widgets/__init__.py")
 
         # ── Real hardware clients ────────────────────────────────────────────
         for fname in ("camera_client.py", "arm_controller.py"):
@@ -60,6 +61,13 @@ def build(version: str):
         theme_src = os.path.join(REPO, "app", "styles", "theme.py")
         if os.path.isfile(theme_src):
             _add(zf, theme_src, f"{top}/VisionForge/app/styles/theme.py")
+
+        # ── Camera config widget (used by dev_runner config window) ──────────
+        _add(
+            zf,
+            os.path.join(REPO, "app", "widgets", "camera_config.py"),
+            f"{top}/VisionForge/app/widgets/camera_config.py",
+        )
 
         # ── Plugin SDK (verbatim from repo) ───────────────────────────────────
         sdk_dir = os.path.join(REPO, "app", "plugin_sdk")
