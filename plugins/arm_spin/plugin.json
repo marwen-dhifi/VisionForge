@@ -1,0 +1,9 @@
+{
+  "name": "arm_spin",
+  "label": "Arm Spin",
+  "icon": "⟳",
+  "version": "1.0.0",
+  "panel_module": "panel",
+  "panel_class": "ArmSpinPanel",
+  "description": "Rotates frames 90° and oscillates the arm left/right."
+}

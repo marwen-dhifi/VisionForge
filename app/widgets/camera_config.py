@@ -183,7 +183,7 @@ class CameraConfigPanel(QWidget):
         self._gain_auto.currentTextChanged.connect(self._on_gain_auto_changed)
         lo.addWidget(_Row("Auto mode", self._gain_auto))
 
-        self._gain = _SliderSpinRow(0.0, 24.0, 2.0, decimals=1)
+        self._gain = _SliderSpinRow(0.0, 24.0, 9.0, decimals=1)
         self._gain.connect_changed(
             lambda v: self._schedule("Gain", round(float(v), 1))
         )

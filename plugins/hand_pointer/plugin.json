@@ -1,0 +1,9 @@
+{
+  "name": "hand_pointer",
+  "label": "Hand Pointer",
+  "icon": "☞",
+  "version": "1.0.0",
+  "panel_module": "panel",
+  "panel_class": "HandPointerPanel",
+  "description": "Point with index finger to move the arm, make a fist to stop."
+}

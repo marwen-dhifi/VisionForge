@@ -31,8 +31,8 @@ class PluginLoader:
     def __init__(self, plugins_root: str = None):
         if plugins_root is None:
             # loader.py is at VisionForge/app/plugin_sdk/loader.py
-            # parents[3] → repo root → repo_root/plugins
-            plugins_root = str(Path(__file__).resolve().parents[3] / "plugins")
+            # parents[2] → VisionForge/ → VisionForge/plugins
+            plugins_root = str(Path(__file__).resolve().parents[2] / "plugins")
         self._root    = os.path.abspath(plugins_root)
         self.plugins: list[PluginDescriptor] = []
         self._scanned = False
@@ -67,6 +67,17 @@ class PluginLoader:
         # Add plugin folder to sys.path so bare local imports work
         if plugin_dir not in sys.path:
             sys.path.insert(0, plugin_dir)
+
+        # Flush any bare-named modules cached by a previous plugin (e.g. 'processor',
+        # 'panel') so this plugin's local files are imported fresh.
+        for _name in list(sys.modules.keys()):
+            _mod = sys.modules[_name]
+            _file = getattr(_mod, "__file__", None) or ""
+            if _file and plugin_dir not in _file and os.path.dirname(_file) != plugin_dir:
+                # only evict short unqualified names that look like local plugin modules
+                if "." not in _name and not _name.startswith("_vf_plugin_"):
+                    if os.path.isfile(os.path.join(plugin_dir, _name + ".py")):
+                        sys.modules.pop(_name, None)
 
         entry_path = os.path.join(plugin_dir, manifest.panel_module + ".py")
         if not os.path.isfile(entry_path):
