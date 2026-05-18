@@ -123,6 +123,8 @@ class MainWindow(QMainWindow):
                         service = descriptor.ServiceClass()
                         svc_idx = self._stack.count()
                         self._connect_service_to_processor(panel, service)
+                        if hasattr(panel, '_start_processor_persistent'):
+                            panel._start_processor_persistent()
                         self._inspection_module.register_service(service, svc_idx)
                         itab   = InspectionTab(service)
                         widget = ServiceAwareWrapper(
@@ -329,7 +331,7 @@ class MainWindow(QMainWindow):
                 svc = self._inspection_module.get_service(active_tag)
                 if svc is not None:
                     try:
-                        svc.op_src_mode.attributes['StateOpOp'].set_value(True)
+                        svc.op_src_mode.set_state_op_op(True)
                         svc.state_machine.set_command_op(256)   # ABORT
                     except Exception as exc:
                         print(f'[MainWindow] ABORT command failed: {exc}', flush=True)
@@ -406,6 +408,8 @@ class MainWindow(QMainWindow):
 
             service = ServiceClass()
             self._connect_service_to_processor(panel, service)
+            if hasattr(panel, '_start_processor_persistent'):
+                panel._start_processor_persistent()
             self._inspection_module.register_service(service, stack_index)
 
             itab    = InspectionTab(service)

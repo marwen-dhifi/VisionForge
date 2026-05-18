@@ -156,8 +156,11 @@ class TaskPanel(QWidget):
             self._processor.start()
 
     def hideEvent(self, event):
-        """Disconnect camera → processor when panel is hidden."""
+        """Disconnect camera → processor when panel is hidden.
+        Skipped if _start_processor_persistent() was called — service may be active."""
         super().hideEvent(event)
+        if getattr(self, '_persistent_connected', False):
+            return
         if self._cam is not None and self._processor is not None:
             try:
                 self._cam.raw_frame_received.disconnect(self._processor.submit_frame)

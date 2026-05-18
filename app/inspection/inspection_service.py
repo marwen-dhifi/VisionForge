@@ -94,11 +94,18 @@ class InspectionService(Service, QObject):
         """
         Update a report value and push to the OPC UA node.
         Thread-safe — may be called from the processor QThread inside on_result().
+        Only writes when the service is in EXECUTE state.
         """
+        if not self.is_state('execute'):
+            return
         rv = self._default_proc.report_values.get(tag_name)
         if rv is not None:
             rv.set_v(value)
             self.report_values_updated.emit()
+
+    def is_state(self, state_str: str) -> bool:
+        # MTPPy uses 'is' (identity) instead of '==' — override with correct equality check
+        return self.state_machine.get_current_state_str() == state_str
 
     def get_param(self, tag_name: str):
         """Read the VOut locked value of a procedure parameter."""
@@ -117,17 +124,28 @@ class InspectionService(Service, QObject):
     # ── Override points (optional) ────────────────────────────────────────────
 
     def on_result(self, result) -> None:
-        """
-        Called every time the linked TaskProcessor emits result_ready.
-        Update report values with set_report(). Do NOT block.
-        Runs on the processor QThread.
-        """
+        """Called every frame while in EXECUTE. Call set_report() here. Do NOT block."""
 
     def on_starting(self) -> None:
-        """Optional setup before EXECUTE. Read locked parameters here."""
+        """Called once before EXECUTE. Read locked parameters here."""
 
     def on_completing(self) -> None:
-        """Optional finalization before COMPLETED."""
+        """Called once before COMPLETED. Final reporting or cleanup."""
+
+    def on_stopping(self) -> None:
+        """Called once when a STOP command is received."""
+
+    def on_aborting(self) -> None:
+        """Called once when an ABORT command is received (from any state)."""
+
+    def on_resetting(self) -> None:
+        """Called once when RESET is sent (STOPPED/ABORTED → IDLE)."""
+
+    def on_pausing(self) -> None:
+        """Called once when PAUSE is received."""
+
+    def on_holding(self) -> None:
+        """Called once when HOLD is received."""
 
     # ── Concrete MTPPy state implementations (16 states) ─────────────────────
 
@@ -164,6 +182,10 @@ class InspectionService(Service, QObject):
 
     def pausing(self):
         self.state_changed.emit('pausing')
+        try:
+            self.on_pausing()
+        except Exception as exc:
+            print(f'[InspectionService:{self.tag_name}] on_pausing error: {exc}', flush=True)
         self.state_change()
 
     def paused(self):
@@ -177,6 +199,10 @@ class InspectionService(Service, QObject):
 
     def holding(self):
         self.state_changed.emit('holding')
+        try:
+            self.on_holding()
+        except Exception as exc:
+            print(f'[InspectionService:{self.tag_name}] on_holding error: {exc}', flush=True)
         self.state_change()
 
     def held(self):
@@ -190,6 +216,10 @@ class InspectionService(Service, QObject):
 
     def stopping(self):
         self.state_changed.emit('stopping')
+        try:
+            self.on_stopping()
+        except Exception as exc:
+            print(f'[InspectionService:{self.tag_name}] on_stopping error: {exc}', flush=True)
         self.state_change()
 
     def stopped(self):
@@ -199,6 +229,10 @@ class InspectionService(Service, QObject):
 
     def aborting(self):
         self.state_changed.emit('aborting')
+        try:
+            self.on_aborting()
+        except Exception as exc:
+            print(f'[InspectionService:{self.tag_name}] on_aborting error: {exc}', flush=True)
         self.state_change()
 
     def aborted(self):
@@ -208,4 +242,8 @@ class InspectionService(Service, QObject):
 
     def resetting(self):
         self.state_changed.emit('resetting')
+        try:
+            self.on_resetting()
+        except Exception as exc:
+            print(f'[InspectionService:{self.tag_name}] on_resetting error: {exc}', flush=True)
         self.state_change()

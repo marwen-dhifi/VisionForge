@@ -221,7 +221,8 @@ class InspectionTab(QWidget):
         try:
             osm = self._service.op_src_mode
             sm  = self._service.state_machine
-            osm.attributes['StateOpOp'].set_value(True)
+            # Must call the method directly — set_value() does not trigger sub_cb
+            osm.set_state_op_op(True)
             sm.set_command_op(code)
         except Exception as exc:
             print(f'[InspectionTab] command {code} failed: {exc}', flush=True)
