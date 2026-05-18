@@ -215,8 +215,9 @@ class ValveOrientationPanel(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._cam:
+        if self._cam and not getattr(self, '_submit_connected', False):
             self._cam.raw_frame_received.connect(self._processor.submit_frame)
+            self._submit_connected = True
         if not self._processor_started:
             self._processor.start()
             self._processor_started = True
@@ -226,11 +227,7 @@ class ValveOrientationPanel(QWidget):
 
     def hideEvent(self, event):
         super().hideEvent(event)
-        if self._cam:
-            try:
-                self._cam.raw_frame_received.disconnect(self._processor.submit_frame)
-            except RuntimeError:
-                pass
+        # Keep submit_frame connected for processor persistence when a service is active.
 
     # ── UI construction ───────────────────────────────────────────────────────
 

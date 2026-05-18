@@ -164,6 +164,25 @@ class TaskPanel(QWidget):
             except (RuntimeError, TypeError):
                 pass
 
+    def _start_processor_persistent(self) -> None:
+        """
+        Connect camera → processor and start it once from on_attach().
+        The processor runs until cleanup() regardless of panel visibility —
+        required for MTP services that may be in EXECUTE when the panel is hidden.
+        Safe to call multiple times; guards against double-connect with a flag.
+        """
+        if not hasattr(self, '_persistent_connected'):
+            self._persistent_connected = False
+        if self._cam is not None and self._processor is not None:
+            if not self._persistent_connected:
+                try:
+                    self._cam.raw_frame_received.connect(self._processor.submit_frame)
+                    self._persistent_connected = True
+                except (RuntimeError, TypeError):
+                    pass
+        if self._processor is not None and not self._processor.isRunning():
+            self._processor.start()
+
     def cleanup(self) -> None:
         """Stop processor and disconnect signals. Subclasses call super().cleanup() first."""
         if self._cam is not None and self._processor is not None:

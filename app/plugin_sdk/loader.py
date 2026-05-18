@@ -12,8 +12,9 @@ from VisionForge.app.plugin_sdk.manifest import PluginManifest, load_manifest
 
 @dataclass
 class PluginDescriptor:
-    manifest:   PluginManifest
-    PanelClass: type
+    manifest:     PluginManifest
+    PanelClass:   type
+    ServiceClass: "type | None" = None
 
 
 class PluginLoader:
@@ -121,7 +122,38 @@ class PluginLoader:
             )
             return
 
-        self.plugins.append(PluginDescriptor(manifest=manifest, PanelClass=PanelClass))
+        descriptor = PluginDescriptor(manifest=manifest, PanelClass=PanelClass)
+
+        # ── Optional: load service.py ─────────────────────────────────────────
+        if manifest.service_module and manifest.service_class:
+            svc_entry = os.path.join(plugin_dir, manifest.service_module + ".py")
+            if os.path.isfile(svc_entry):
+                svc_key = f"_vf_plugin_{manifest.name}_{manifest.service_module}"
+                try:
+                    svc_spec   = importlib.util.spec_from_file_location(svc_key, svc_entry)
+                    svc_module = importlib.util.module_from_spec(svc_spec)
+                    sys.modules[svc_key] = svc_module
+                    svc_spec.loader.exec_module(svc_module)
+                    ServiceClass = getattr(svc_module, manifest.service_class, None)
+                    if ServiceClass is not None:
+                        from VisionForge.app.inspection.inspection_service import InspectionService
+                        if isinstance(ServiceClass, type) and issubclass(ServiceClass, InspectionService):
+                            descriptor.ServiceClass = ServiceClass
+                        else:
+                            print(
+                                f"[PluginLoader] '{manifest.name}': service class "
+                                f"'{manifest.service_class}' must subclass InspectionService",
+                                file=sys.stderr, flush=True,
+                            )
+                except Exception:
+                    import traceback
+                    print(
+                        f"[PluginLoader] '{manifest.name}': service load failed:\n"
+                        f"{traceback.format_exc()}",
+                        file=sys.stderr, flush=True,
+                    )
+
+        self.plugins.append(descriptor)
         print(f"[PluginLoader] Loaded '{manifest.name}' v{manifest.version}", flush=True)
 
 

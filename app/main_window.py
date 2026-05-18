@@ -30,12 +30,15 @@ from VisionForge.app.plugin_sdk.loader import get_plugin_loader
 class MainWindow(QMainWindow):
 
     def __init__(self, camera_client=None, arm_controller=None,
-                 cam_ip: str = "", arm_ip: str = ""):
+                 cam_ip: str = "", arm_ip: str = "", opc_port: int = 48050):
         super().__init__()
-        self._cam     = camera_client
-        self._arm     = arm_controller
-        self._cam_ip  = cam_ip
-        self._arm_ip  = arm_ip
+        self._cam               = camera_client
+        self._arm               = arm_controller
+        self._cam_ip            = cam_ip
+        self._arm_ip            = arm_ip
+        self._opc_port          = opc_port
+        self._inspection_module = None
+        self._last_pol_tab      = None
 
         self.setWindowTitle("VisionForge v1.0")
         self.setMinimumSize(1100, 700)
@@ -87,11 +90,18 @@ class MainWindow(QMainWindow):
             arm_controller=self._arm,
         )
 
+        # ── InspectionModule (owns OPC UA server, created before panels are stacked) ──
+        from VisionForge.app.inspection.inspection_module import InspectionModule
+        self._inspection_module = InspectionModule(opc_port=self._opc_port)
+
         self._stack.addWidget(self._camera_panel)   # index 0
         self._stack.addWidget(self._arm_panel)      # index 1
-        self._stack.addWidget(self._valve_panel)    # index 2
-        self._stack.addWidget(self._seg_panel)      # index 3
-        self._stack.addWidget(self._tracker_panel)  # index 4
+        self._stack.addWidget(
+            self._try_wrap_panel(self._valve_panel,   'valve_orientation', 2))  # index 2
+        self._stack.addWidget(
+            self._try_wrap_panel(self._seg_panel,     'seven_segment',     3))  # index 3
+        self._stack.addWidget(
+            self._try_wrap_panel(self._tracker_panel, 'module_tracker',    4))  # index 4
 
         # ── Plugin panels (indices 5+) ────────────────────────────────────────
         self._plugin_panels: list = []
@@ -104,7 +114,30 @@ class MainWindow(QMainWindow):
                     arm_controller=self._arm,
                 )
                 panel.on_attach()
-                idx = self._stack.addWidget(panel)
+
+                widget = panel
+                if descriptor.ServiceClass is not None:
+                    from VisionForge.app.inspection.inspection_tab      import InspectionTab
+                    from VisionForge.app.inspection.service_aware_panel import ServiceAwareWrapper
+                    try:
+                        service = descriptor.ServiceClass()
+                        svc_idx = self._stack.count()
+                        self._connect_service_to_processor(panel, service)
+                        self._inspection_module.register_service(service, svc_idx)
+                        itab   = InspectionTab(service)
+                        widget = ServiceAwareWrapper(
+                            panel, itab, task_label=descriptor.manifest.label
+                        )
+                    except Exception:
+                        import traceback
+                        print(
+                            f"[MainWindow] Plugin '{descriptor.manifest.name}' "
+                            f"service init failed:\n{traceback.format_exc()}",
+                            flush=True,
+                        )
+                        widget = panel
+
+                idx = self._stack.addWidget(widget)
                 self._plugin_panels.append(panel)
                 _plugin_sidebar_items.append({
                     "icon":  descriptor.manifest.icon,
@@ -117,6 +150,9 @@ class MainWindow(QMainWindow):
                     flush=True,
                 )
 
+        if self._inspection_module._services:
+            self._inspection_module.start_server()
+
         # Sidebar built AFTER all plugin indices are known
         self._sidebar = Sidebar(plugin_items=_plugin_sidebar_items)
         body_lo.addWidget(self._sidebar)
@@ -126,8 +162,13 @@ class MainWindow(QMainWindow):
     # ── Wiring ────────────────────────────────────────────────────────────────
 
     def _wire_signals(self):
-        # Sidebar page switching
-        self._sidebar.page_changed.connect(self._stack.setCurrentIndex)
+        # Sidebar page switching (routed through guard for active-service confirmation)
+        self._sidebar.page_changed.connect(self._on_page_change_requested)
+
+        # Inspection module signals
+        if self._inspection_module is not None:
+            self._inspection_module.auto_switch_requested.connect(self._on_auto_switch)
+            self._inspection_module.pol_control_changed.connect(self._on_pol_control_changed)
 
         # Camera status
         if self._cam:
@@ -164,16 +205,20 @@ class MainWindow(QMainWindow):
         cam.connection_changed.connect(self._topbar.cam_indicator.set_connected)
         self._camera_panel.attach_camera(cam)
         self._arm_panel.attach_camera(cam)
-        # Panels without attach_camera just store _cam and use it in showEvent
-        self._valve_panel._cam  = cam
-        self._seg_panel._cam    = cam
-        self._tracker_panel._cam = cam
-        # If tracker panel is already visible, connect it now
-        if self._tracker_panel.isVisible() and self._tracker_panel._cam:
-            try:
-                cam.raw_frame_received.connect(self._tracker_panel._processor.submit_frame)
-            except Exception:
-                pass
+
+        # For task panels: update _cam, reset connection flag, then eagerly re-connect
+        # processors that were already started (handles reconnect after disconnect).
+        for panel in (self._valve_panel, self._seg_panel, self._tracker_panel):
+            panel._cam = cam
+            panel._submit_connected = False
+            proc = getattr(panel, '_processor', None)
+            if proc is not None and getattr(panel, '_processor_started', False):
+                try:
+                    cam.raw_frame_received.connect(proc.submit_frame)
+                    panel._submit_connected = True
+                except Exception:
+                    pass
+
         for panel in self._plugin_panels:
             try: panel.attach_camera(cam)
             except Exception: pass
@@ -256,9 +301,152 @@ class MainWindow(QMainWindow):
         else:
             self._arm.start()
 
+    # ── Navigation guard ─────────────────────────────────────────────────────
+
+    def _on_page_change_requested(self, index: int) -> None:
+        if self._inspection_module is None:
+            self._do_switch(index)
+            return
+
+        active_tag = self._inspection_module.get_active_service_tag()
+        if active_tag is None:
+            self._do_switch(index)
+            return
+
+        active_idx  = self._inspection_module._service_stack_index.get(active_tag)
+        current_idx = self._stack.currentIndex()
+
+        if active_idx is not None and current_idx == active_idx and index != active_idx:
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                'Abort Inspection Service?',
+                f'Inspection service "{active_tag}" is currently ACTIVE.\n'
+                'Navigating away will send an ABORT command. Proceed?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                svc = self._inspection_module.get_service(active_tag)
+                if svc is not None:
+                    try:
+                        svc.op_src_mode.attributes['StateOpOp'].set_value(True)
+                        svc.state_machine.set_command_op(256)   # ABORT
+                    except Exception as exc:
+                        print(f'[MainWindow] ABORT command failed: {exc}', flush=True)
+                self._do_switch(index)
+        else:
+            self._do_switch(index)
+
+    def _do_switch(self, index: int) -> None:
+        """Switch page stack and update sidebar visual without re-emitting page_changed."""
+        self._stack.setCurrentIndex(index)
+        try:
+            self._sidebar.blockSignals(True)
+            self._sidebar._select(index)
+        finally:
+            self._sidebar.blockSignals(False)
+
+    def _on_auto_switch(self, index: int) -> None:
+        """Called by InspectionModule when POL starts a service — switches without confirmation."""
+        self._do_switch(index)
+
+    def _on_pol_control_changed(self, active: bool) -> None:
+        """Show/hide POL banner on the InspectionTab of the (last) active service."""
+        if active:
+            if self._inspection_module is None:
+                return
+            tag = self._inspection_module.get_active_service_tag()
+            if tag is None:
+                return
+            idx = self._inspection_module._service_stack_index.get(tag)
+            if idx is None:
+                return
+            widget = self._stack.widget(idx)
+            tab = getattr(widget, '_inspection_tab', None)
+            if tab and hasattr(tab, 'set_pol_banner'):
+                self._last_pol_tab = tab
+                tab.set_pol_banner(True)
+        else:
+            if self._last_pol_tab is not None:
+                self._last_pol_tab.set_pol_banner(False)
+                self._last_pol_tab = None
+
+    def _try_wrap_panel(self, panel, task_name: str, stack_index: int):
+        """
+        Try to load service.py next to a built-in task panel.
+        Returns ServiceAwareWrapper if a service class was found, panel unchanged otherwise.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        svc_path = Path(__file__).resolve().parent / 'tasks' / task_name / 'service.py'
+        if not svc_path.is_file():
+            return panel
+
+        try:
+            from VisionForge.app.inspection.inspection_service import InspectionService
+            from VisionForge.app.inspection.inspection_tab     import InspectionTab
+            from VisionForge.app.inspection.service_aware_panel import ServiceAwareWrapper
+
+            spec = importlib.util.spec_from_file_location(
+                f'_vf_task_{task_name}_service', str(svc_path)
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+
+            ServiceClass = next(
+                (v for v in vars(mod).values()
+                 if isinstance(v, type)
+                 and issubclass(v, InspectionService)
+                 and v is not InspectionService),
+                None,
+            )
+            if ServiceClass is None:
+                return panel
+
+            service = ServiceClass()
+            self._connect_service_to_processor(panel, service)
+            self._inspection_module.register_service(service, stack_index)
+
+            itab    = InspectionTab(service)
+            wrapper = ServiceAwareWrapper(
+                panel, itab,
+                task_label=task_name.replace('_', ' ').title(),
+            )
+            print(f'[MainWindow] Loaded inspection service for task "{task_name}"', flush=True)
+            return wrapper
+
+        except Exception:
+            import traceback
+            print(
+                f'[MainWindow] Failed to load service for "{task_name}":\n'
+                f'{traceback.format_exc()}',
+                flush=True,
+            )
+            return panel
+
+    def _connect_service_to_processor(self, panel, service) -> None:
+        """Connect panel processor's first available result signal → service.on_result."""
+        proc = getattr(panel, '_processor', None)
+        if proc is None:
+            return
+        for sig_name in ('result_ready', 'frame_ready', 'detections_ready'):
+            sig = getattr(proc, sig_name, None)
+            if sig is not None:
+                try:
+                    sig.connect(service.on_result)
+                except Exception as exc:
+                    print(
+                        f'[MainWindow] connect {sig_name} → on_result failed: {exc}',
+                        flush=True,
+                    )
+                return
+
     # ── Close ─────────────────────────────────────────────────────────────────
 
     def closeEvent(self, event):
+        if self._inspection_module is not None:
+            self._inspection_module.stop_server()
         self._gamepad.stop()
         self._gamepad.wait(1000)
         self._valve_panel.cleanup()

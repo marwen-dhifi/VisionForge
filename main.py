@@ -29,10 +29,10 @@ def main():
         from app.connection_dialog import ConnectionDialog
         app._dlg = ConnectionDialog()
 
-        def _on_connected(camera_client, arm_controller, cam_ip, arm_ip):
+        def _on_connected(camera_client, arm_controller, cam_ip, arm_ip, opc_port):
             from app.main_window import MainWindow
             app._window = MainWindow(camera_client, arm_controller,
-                                     cam_ip=cam_ip, arm_ip=arm_ip)
+                                     cam_ip=cam_ip, arm_ip=arm_ip, opc_port=opc_port)
             app._window.showMaximized()
 
         app._dlg.connection_established.connect(_on_connected)

@@ -246,7 +246,10 @@ class SevenSegmentPanel(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if self._cam:
-            self._cam.raw_frame_received.connect(self._processor.submit_frame)
+            # submit_frame persists once connected; only reconnect display slot
+            if not getattr(self, '_submit_connected', False):
+                self._cam.raw_frame_received.connect(self._processor.submit_frame)
+                self._submit_connected = True
             self._cam.raw_frame_received.connect(self._feed.show_raw_frame)
         if not self._processor_started:
             self._processor.start()
@@ -254,12 +257,13 @@ class SevenSegmentPanel(QWidget):
 
     def hideEvent(self, event):
         super().hideEvent(event)
+        # Keep submit_frame connected so the processor keeps running if a service is active.
+        # Only disconnect the display slot to save rendering work while hidden.
         if self._cam:
-            for slot in (self._processor.submit_frame, self._feed.show_raw_frame):
-                try:
-                    self._cam.raw_frame_received.disconnect(slot)
-                except RuntimeError:
-                    pass
+            try:
+                self._cam.raw_frame_received.disconnect(self._feed.show_raw_frame)
+            except RuntimeError:
+                pass
 
     def cleanup(self):
         self._stop_balayage()

@@ -8,14 +8,16 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class PluginManifest:
-    name:         str
-    label:        str
-    icon:         str
-    version:      str
-    panel_module: str
-    panel_class:  str
-    description:  str = ""
-    plugin_dir:   str = field(default="", compare=False)
+    name:           str
+    label:          str
+    icon:           str
+    version:        str
+    panel_module:   str
+    panel_class:    str
+    description:    str = ""
+    plugin_dir:     str = field(default="", compare=False)
+    service_module: str = ""   # optional: e.g. "service"
+    service_class:  str = ""   # optional: e.g. "MyInspectionService"
 
     @staticmethod
     def required_keys():
@@ -45,12 +47,14 @@ def load_manifest(plugin_dir: str) -> PluginManifest:
         raise ValueError(f"{path}: missing required keys: {', '.join(missing)}")
 
     return PluginManifest(
-        name         = data["name"],
-        label        = data["label"],
-        icon         = data["icon"],
-        version      = data["version"],
-        panel_module = data["panel_module"],
-        panel_class  = data["panel_class"],
-        description  = data.get("description", ""),
-        plugin_dir   = os.path.abspath(plugin_dir),
+        name           = data["name"],
+        label          = data["label"],
+        icon           = data["icon"],
+        version        = data["version"],
+        panel_module   = data["panel_module"],
+        panel_class    = data["panel_class"],
+        description    = data.get("description", ""),
+        plugin_dir     = os.path.abspath(plugin_dir),
+        service_module = data.get("service_module", ""),
+        service_class  = data.get("service_class", ""),
     )

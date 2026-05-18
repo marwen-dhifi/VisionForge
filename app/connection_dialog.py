@@ -105,7 +105,7 @@ class _ConnectionWorker(QThread):
 # ── Dialog ────────────────────────────────────────────────────────────────────
 
 class ConnectionDialog(QDialog):
-    connection_established = Signal(object, object, str, str)   # cam, arm, cam_ip, arm_ip
+    connection_established = Signal(object, object, str, str, int)   # cam, arm, cam_ip, arm_ip, opc_port
 
     CAM_DEFAULT = "10.6.51.140"
     ARM_DEFAULT  = "10.6.51.141"
@@ -169,6 +169,16 @@ class ConnectionDialog(QDialog):
         self._arm_ip.setFixedHeight(42)
         self._arm_ip.setStyleSheet(self._input_style())
         lo.addWidget(self._arm_ip)
+        lo.addSpacing(18)
+
+        # ── OPC UA port field ─────────────────────────────────────────────────
+        lo.addWidget(self._field_label("⬡  OPC UA PORT", "#7C3AED"))
+        lo.addSpacing(6)
+        self._opc_port = QLineEdit("48050")
+        self._opc_port.setPlaceholderText("e.g. 48050")
+        self._opc_port.setFixedHeight(42)
+        self._opc_port.setStyleSheet(self._input_style())
+        lo.addWidget(self._opc_port)
         lo.addSpacing(24)
 
         # ── Connect button ───────────────────────────────────────────────────
@@ -301,7 +311,12 @@ class ConnectionDialog(QDialog):
         if arm_controller:
             arm_controller.start()
 
-        self.connection_established.emit(camera_client, arm_controller, cam_ip, arm_ip)
+        try:
+            opc_port = int(self._opc_port.text().strip())
+        except ValueError:
+            opc_port = 48050
+
+        self.connection_established.emit(camera_client, arm_controller, cam_ip, arm_ip, opc_port)
         self.accept()
 
     def _set_message(self, text: str, color: str):
