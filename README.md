@@ -35,6 +35,7 @@ The application streams live camera frames via ZeroMQ, runs deep-learning models
 - **Gamepad input:** Pygame
 - **Time-series storage:** InfluxDB client
 - **Gesture recognition:** MediaPipe (≥ 0.10.14)
+- **Industrial standard:** MTPPy (VDI/VDE/NAMUR 2658 — OPC UA PEA)
 
 ---
 
@@ -61,8 +62,9 @@ python main.py
 
 On startup:
 1. Splash screen loads YOLO + PARSeq weights and scans the `plugins/` folder
-2. Connection dialog prompts for camera IP and arm IP
+2. Connection dialog prompts for camera IP, arm IP, and OPC UA port (default 48050)
 3. Main window opens — five built-in tabs plus a sidebar entry for each loaded plugin
+4. OPC UA server starts — connect UaExpert or a POL to `opc.tcp://<host>:48050/`
 
 ---
 
@@ -72,15 +74,20 @@ On startup:
 VisionForge/
 ├── main.py                          # Entry point
 ├── app/
-│   ├── main_window.py               # Tabbed shell + plugin integration
+│   ├── main_window.py               # Tabbed shell + plugin + inspection integration
 │   ├── splash.py                    # Startup screen (loads models + scans plugins)
-│   ├── connection_dialog.py         # IP configuration & connection test
+│   ├── connection_dialog.py         # IP + OPC UA port configuration
 │   ├── styles/theme.py              # Dark theme stylesheet
 │   ├── core/
 │   │   ├── camera_client.py         # ZMQ camera subscriber (QThread)
 │   │   ├── arm_controller.py        # xArm5 SDK wrapper (QThread)
 │   │   ├── gamepad_controller.py    # Gamepad input thread
 │   │   └── media_manager.py         # Video/image recording
+│   ├── inspection/                  # MTP / VDI VDE NAMUR 2658 integration
+│   │   ├── inspection_service.py    # InspectionService base class (MTPPy + Qt)
+│   │   ├── inspection_module.py     # InspectionModule — owns OPC UA server
+│   │   ├── inspection_tab.py        # Inspection sub-tab widget
+│   │   └── service_aware_panel.py   # Wraps TaskPanel in QTabWidget + InspectionTab
 │   ├── widgets/                     # Reusable UI components
 │   ├── plugin_sdk/                  # Plugin SDK
 │   │   ├── base.py                  # TaskPanel + TaskProcessor ABCs
@@ -90,12 +97,16 @@ VisionForge/
 │   │   └── dev_runner.py            # Standalone plugin test runner
 │   └── tasks/
 │       ├── seven_segment/           # YOLO + ByteTrack + PARSeq pipeline
+│       │   └── service.py           # MTP inspection service for this task
 │       ├── valve_orientation/       # AprilTag pose estimation pipeline
 │       └── module_tracker/          # ArUco 3D localization pipeline
 ├── plugins/
 │   ├── arm_spin/                    # Arm Y-axis oscillation tutorial plugin
 │   ├── hand_pointer/                # Gesture-controlled arm movement
-│   └── example_difference/          # Frame-difference motion detector
+│   └── example_difference/          # Frame-difference motion detector (+ service.py)
+├── docs/
+│   ├── plugin_sdk.md                # Plugin development guide
+│   └── mtp_inspection.md            # MTP inspection service guide
 └── media/
     ├── images/                      # Captured screenshots
     └── videos/                      # Recorded clips
@@ -172,11 +183,16 @@ main.py
   └─ SplashScreen
        ├─ ModelLoader (QThread) — loads YOLO + PARSeq
        ├─ get_plugin_loader().scan() — discovers plugins/
-       └─ ConnectionDialog → MainWindow
-            ├─ CameraClient.start()
-            ├─ ArmController.start()
-            ├─ Built-in panels: stack indices 0–4
-            └─ Plugin panels: stack indices 5+
+       └─ ConnectionDialog (camera IP, arm IP, OPC UA port)
+            └─ MainWindow
+                 ├─ CameraClient.start()
+                 ├─ ArmController.start()
+                 ├─ Built-in panels: stack indices 0–4
+                 ├─ Plugin panels: stack indices 5+
+                 ├─ InspectionModule created (one per platform)
+                 │    ├─ Each task/plugin with service.py → service registered
+                 │    └─ OPC UA server started at opc.tcp://0.0.0.0:<port>/
+                 └─ Sidebar guard wired (ABORT dialog if navigating away from active service)
 ```
 
 ### Camera configuration
@@ -187,6 +203,28 @@ The camera server owns the physical acquisition (resolution, FPS, exposure, gain
 
 - **Mode 0 (position mode)** — `set_position()` commands, used by valve scan and go-to-position functions
 - **Mode 1 (servo mode)** — `set_servo_cartesian()` commands, used for continuous real-time control (gamepad, plugins)
+
+---
+
+## MTP Inspection (VDI/VDE/NAMUR 2658)
+
+VisionForge is a compliant **Process Equipment Assembly (PEA)**. Each vision task and plugin can expose its live results as an **OPC UA inspection service** that an external **Process Orchestration Layer (POL)** — or a test client like UaExpert — can start, stop, and subscribe to.
+
+### How it works
+
+- One shared OPC UA server runs at the configurable port (default **48050**).
+- Each task/plugin that includes a `service.py` gets one service registered in that server.
+- The platform enforces a **one-active-service constraint** — only one service can be in EXECUTE at a time (hardware constraint: one camera).
+- When a POL starts a service remotely, VisionForge auto-switches the panel into view and shows a **POL control banner** in the Inspection sub-tab.
+- Navigating away from a panel whose service is running triggers a confirmation dialog that sends ABORT before switching.
+
+### Adding an inspection service to a plugin
+
+1. Write `service.py` subclassing `InspectionService` (declare parameters + report values).
+2. Add `"service_module": "service"` and `"service_class": "MyClass"` to `plugin.json`.
+3. That's it — VisionForge wires everything at startup.
+
+See `docs/mtp_inspection.md` for the full API, state machine reference, and UaExpert testing guide.
 
 ---
 
@@ -206,14 +244,18 @@ plugins/my_plugin/
 **`plugin.json`**
 ```json
 {
-  "name":         "my_plugin",
-  "label":        "My Plugin",
-  "icon":         "⬡",
-  "version":      "1.0.0",
-  "panel_module": "panel",
-  "panel_class":  "MyPanel"
+  "name":           "my_plugin",
+  "label":          "My Plugin",
+  "icon":           "⬡",
+  "version":        "1.0.0",
+  "panel_module":   "panel",
+  "panel_class":    "MyPanel",
+  "service_module": "service",      
+  "service_class":  "MyInspectionService"
 }
 ```
+
+`service_module` and `service_class` are optional. If present, the platform loads the service and registers it in the OPC UA server. See `docs/mtp_inspection.md`.
 
 ### TaskProcessor
 
@@ -268,10 +310,10 @@ Test a plugin against real hardware without launching the full platform:
 
 ```bash
 python -m VisionForge.app.plugin_sdk.dev_runner plugins/my_plugin \
-    --camera 192.168.1.100 --arm 192.168.1.200
+    --camera 192.168.1.100 --arm 192.168.1.200 --opc-port 48050
 ```
 
-Opens three windows: the plugin panel (maximized), a hardware status monitor, and the camera configuration panel.
+Opens up to four windows: the plugin panel (maximized), a hardware status monitor, the camera configuration panel, and — if the plugin declares a service — the **Inspection** window with full MTP state controls and a live OPC UA server for UaExpert testing. See `docs/mtp_inspection.md`.
 
 ### SDK zip
 

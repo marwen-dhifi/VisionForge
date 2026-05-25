@@ -80,7 +80,7 @@ python -m VisionForge.app.plugin_sdk.dev_runner plugins\my_plugin `
     --arm    192.168.1.200
 ```
 
-A full-size window opens with your panel connected to live hardware. Close it to stop.
+Four windows open: your plugin panel (maximized), hardware status monitor, camera configuration, and — if your plugin has a `service.py` — the **Inspection** window with full MTP state controls and an OPC UA server for UaExpert. Close the main window to stop everything.
 
 ### 6 — Deploy to VisionForge
 
@@ -104,18 +104,22 @@ Your plugin appears in the sidebar Tasks group automatically.
 | `panel_module` | string | yes | Python filename without `.py` (e.g. `"panel"`). |
 | `panel_class` | string | yes | Class name in that module (must subclass `TaskPanel`). |
 | `description` | string | no | Human-readable summary. |
+| `service_module` | string | no | Python filename without `.py` for the MTP inspection service (e.g. `"service"`). |
+| `service_class` | string | no | Class name in that module (must subclass `InspectionService`). |
 
-Full example:
+Full example with inspection service:
 
 ```json
 {
-    "name":         "my_plugin",
-    "label":        "My Task",
-    "icon":         "◈",
-    "version":      "1.0.0",
-    "panel_module": "panel",
-    "panel_class":  "MyPanel",
-    "description":  "Does something useful."
+    "name":           "my_plugin",
+    "label":          "My Task",
+    "icon":           "◈",
+    "version":        "1.0.0",
+    "panel_module":   "panel",
+    "panel_class":    "MyPanel",
+    "description":    "Does something useful.",
+    "service_module": "service",
+    "service_class":  "MyInspectionService"
 }
 ```
 
@@ -225,7 +229,7 @@ WEIGHTS = resolve_path(__file__, "weights/model.pt")
 ## dev_runner reference
 
 ```
-python -m VisionForge.app.plugin_sdk.dev_runner <plugin_dir> --camera IP --arm IP
+python -m VisionForge.app.plugin_sdk.dev_runner <plugin_dir> --camera IP --arm IP [options]
 ```
 
 | Argument | Required | Description |
@@ -233,8 +237,14 @@ python -m VisionForge.app.plugin_sdk.dev_runner <plugin_dir> --camera IP --arm I
 | `plugin_dir` | yes | Path to the plugin folder |
 | `--camera IP` | yes | IP of the camera ZMQ server |
 | `--arm IP` | yes | IP of the xArm controller |
+| `--opc-port PORT` | no | OPC UA server port (default: `48050`) |
+| `--no-status` | no | Hide the hardware status monitor window |
+| `--no-config` | no | Hide the camera configuration window |
+| `--no-inspection` | no | Hide the inspection window (ignored if plugin has no service) |
 
 Both `--camera` and `--arm` are required. Plugins always run against real hardware.
+
+If your plugin declares `service_module` in `plugin.json`, the dev runner starts an OPC UA server automatically and opens the Inspection window. See `docs/mtp_inspection.md` for how to test with UaExpert.
 
 ---
 
