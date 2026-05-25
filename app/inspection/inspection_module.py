@@ -25,7 +25,7 @@ class InspectionModule(QObject):
     """
 
     auto_switch_requested = Signal(int)
-    pol_control_changed   = Signal(bool)
+    pol_control_changed   = Signal(str, bool)  # (tag_name, is_pol_active)
     service_state_changed = Signal(str, str)
 
     def __init__(self, opc_port: int = 48050, parent=None):
@@ -118,10 +118,6 @@ class InspectionModule(QObject):
                 )
             self._active_service_tag = tag_name
 
-            pol_driven = self._is_pol_driven(tag_name)
-            self._pol_control = pol_driven
-            self.pol_control_changed.emit(pol_driven)
-
             idx = self._service_stack_index.get(tag_name)
             if idx is not None:
                 self.auto_switch_requested.emit(idx)
@@ -129,8 +125,11 @@ class InspectionModule(QObject):
         elif state_str in ('stopped', 'aborted', 'idle', 'completed'):
             if self._active_service_tag == tag_name:
                 self._active_service_tag = None
-                self._pol_control = False
-                self.pol_control_changed.emit(False)
+
+        pol_driven = self._is_pol_driven(tag_name)
+        if pol_driven != self._pol_control:
+            self._pol_control = pol_driven
+            self.pol_control_changed.emit(tag_name, pol_driven)
 
     def _is_pol_driven(self, tag_name: str) -> bool:
         """Return True if the service is being controlled by an external source (POL)."""

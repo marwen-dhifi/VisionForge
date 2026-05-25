@@ -9,12 +9,14 @@ Usage:
 Both --camera and --arm are REQUIRED. Plugins always run against real hardware.
 
 Options:
-    --no-status     Hide the hardware status monitor window (shown by default)
-    --no-config     Hide the camera configuration window (shown by default)
+    --no-status       Hide the hardware status monitor window (shown by default)
+    --no-config       Hide the camera configuration window (shown by default)
+    --no-inspection   Hide the inspection service window (shown by default if service.py exists)
+    --opc-port PORT   OPC UA server port for UaExpert / POL connections (default: 48050)
 
 Example:
     python -m VisionForge.app.plugin_sdk.dev_runner plugins/my_plugin \\
-        --camera 192.168.1.100 --arm 192.168.1.200
+        --camera 192.168.1.100 --arm 192.168.1.200 --opc-port 48050
 """
 import argparse
 import importlib.util
@@ -30,6 +32,77 @@ def _ensure_visionforge_on_path():
     repo_root = os.path.dirname(vf_dir)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
+
+
+def _find_inspection_dir() -> "str | None":
+    """
+    Return the path to app/inspection/ — either in this VisionForge copy or in
+    any sibling/ancestor directory that has the full platform.
+    Walks up to 4 ancestor levels so the SDK works regardless of where it is unzipped.
+    """
+    this_file = os.path.abspath(__file__)
+    sdk_dir   = os.path.dirname(this_file)
+    app_dir   = os.path.dirname(sdk_dir)
+
+    local = os.path.join(app_dir, 'inspection')
+    if os.path.isdir(local):
+        return local
+
+    vf_dir    = os.path.dirname(app_dir)
+    repo_root = os.path.dirname(vf_dir)
+
+    search_dir = os.path.dirname(repo_root)
+    for _ in range(4):
+        if not search_dir or search_dir == os.path.dirname(search_dir):
+            break
+        try:
+            for name in sorted(os.listdir(search_dir)):
+                candidate = os.path.join(search_dir, name)
+                if not os.path.isdir(candidate):
+                    continue
+                # Direct layout: candidate IS the VisionForge root → candidate/app/inspection
+                insp = os.path.join(candidate, 'app', 'inspection')
+                if os.path.isdir(insp):
+                    return insp
+                # SDK layout: candidate/VisionForge/app/inspection
+                insp = os.path.join(candidate, 'VisionForge', 'app', 'inspection')
+                if os.path.isdir(insp):
+                    return insp
+        except OSError:
+            pass
+        search_dir = os.path.dirname(search_dir)
+
+    return None
+
+
+def _preload_inspection(insp_dir: str) -> None:
+    """
+    Load inspection_service, inspection_module, and inspection_tab from explicit
+    file paths and inject them into sys.modules under their canonical package names.
+    This bypasses the sys.modules VisionForge package cache (which may point to an
+    SDK-only copy that lacks app/inspection/).
+    """
+    _PKG = 'VisionForge.app.inspection'
+
+    import types
+    if _PKG not in sys.modules:
+        pkg = types.ModuleType(_PKG)
+        pkg.__path__ = [insp_dir]
+        pkg.__package__ = _PKG
+        sys.modules[_PKG] = pkg
+
+    for mod_name in ('inspection_service', 'inspection_module', 'inspection_tab'):
+        full_name = f'{_PKG}.{mod_name}'
+        if full_name in sys.modules:
+            continue
+        path = os.path.join(insp_dir, mod_name + '.py')
+        if not os.path.isfile(path):
+            continue
+        spec = importlib.util.spec_from_file_location(full_name, path)
+        mod  = importlib.util.module_from_spec(spec)
+        mod.__package__ = _PKG
+        sys.modules[full_name] = mod
+        spec.loader.exec_module(mod)
 
 
 # ── Hardware Status Window ────────────────────────────────────────────────────
@@ -274,7 +347,6 @@ def _build_status_window(camera, arm):
     )
     arm_lo.addWidget(arm_reset_btn)
 
-    # Position updates via signal (setText only — no layout impact)
     def _on_pos(x, y, z, roll, pitch, yaw):
         x_val.setText(f"{x:+.1f}")
         y_val.setText(f"{y:+.1f}")
@@ -285,7 +357,6 @@ def _build_status_window(camera, arm):
 
     arm.position_updated.connect(_on_pos)
 
-    # Poll-based arm state — same logic as arm_panel._ControlPanel._poll_arm()
     _last_arm_state = [None]
 
     def _poll_arm():
@@ -372,7 +443,6 @@ def _build_status_window(camera, arm):
 def _build_config_window(camera):
     """
     Floating camera configuration panel — identical controls to the main app.
-    Wraps CameraConfigPanel and wires it to the live CameraClient.
     """
     from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
     from PySide6.QtCore    import Qt
@@ -406,10 +476,89 @@ def _build_config_window(camera):
     return win
 
 
+# ── Inspection Service Window ─────────────────────────────────────────────────
+
+def _build_inspection_window(service, opc_port: int, inspection_module=None):
+    """
+    Floating inspection window — identical to the Inspection sub-tab in the main app.
+    Includes the full InspectionTab (state, buttons, params, report values).
+    The OPC UA server is already running; the endpoint is shown so UaExpert can connect.
+    """
+    from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame
+    from PySide6.QtCore    import Qt
+    from PySide6.QtGui     import QFont
+    from VisionForge.app.inspection.inspection_tab import InspectionTab
+
+    win = QWidget()
+    win.setWindowTitle(f"Inspection — {service.tag_name}  —  VisionForge")
+    win.setMinimumSize(420, 560)
+    win.resize(460, 680)
+    win.setStyleSheet("background: #060612;")
+    win.setWindowFlags(
+        Qt.WindowType.Window |
+        Qt.WindowType.WindowCloseButtonHint
+    )
+
+    outer = QVBoxLayout(win)
+    outer.setContentsMargins(10, 10, 10, 10)
+    outer.setSpacing(6)
+
+    # Title
+    title = QLabel(f"⬡  Inspection  —  {service.tag_name}")
+    title.setFixedHeight(28)
+    title.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+    title.setStyleSheet("color: #00E676; letter-spacing: 1px;")
+    outer.addWidget(title)
+
+    # OPC UA endpoint banner (so developer knows where to connect UaExpert)
+    endpoint_lbl = QLabel(f"  OPC UA endpoint:  opc.tcp://localhost:{opc_port}/")
+    endpoint_lbl.setStyleSheet(
+        "background: #0C0C1E; color: #8890B8;"
+        " border: 1px solid #1A1A38; border-radius: 4px;"
+        " padding: 5px; font-size: 11px; font-family: Consolas;"
+    )
+    outer.addWidget(endpoint_lbl)
+
+    sep = QFrame()
+    sep.setFrameShape(QFrame.Shape.HLine)
+    sep.setStyleSheet("color: #1A1A38;")
+    outer.addWidget(sep)
+
+    # Full InspectionTab — identical to what the main platform shows
+    itab = InspectionTab(service)
+    outer.addWidget(itab, 1)
+
+    # Wire POL banner — poll every 500 ms so it reacts to SrcExtAct changes
+    # even when no MTP state transition fires (e.g. UaExpert writes SrcExtOp=True
+    # while the service stays in idle/stopped).
+    if inspection_module is not None:
+        from PySide6.QtCore import QTimer
+        inspection_module.pol_control_changed.connect(
+            lambda _tag, active: itab.set_pol_banner(active)
+        )
+        pol_timer = QTimer(win)
+        pol_timer.setInterval(500)
+        pol_timer.timeout.connect(
+            lambda: itab.set_pol_banner(
+                inspection_module._is_pol_driven(service.tag_name)
+            )
+        )
+        pol_timer.start()
+
+    return win
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def main():
     _ensure_visionforge_on_path()
+
+    insp_dir = _find_inspection_dir()
+    if insp_dir:
+        print(f'[dev_runner] Found inspection dir: {insp_dir}', flush=True)
+        _preload_inspection(insp_dir)
+    else:
+        print('[dev_runner] NOTE: app/inspection/ not found — inspection window unavailable.', flush=True)
 
     parser = argparse.ArgumentParser(
         prog="python -m VisionForge.app.plugin_sdk.dev_runner",
@@ -442,6 +591,19 @@ def main():
         action="store_true",
         default=False,
         help="Hide the camera configuration window",
+    )
+    parser.add_argument(
+        "--no-inspection",
+        action="store_true",
+        default=False,
+        help="Hide the inspection service window (only relevant if plugin has service.py)",
+    )
+    parser.add_argument(
+        "--opc-port",
+        type=int,
+        default=48050,
+        metavar="PORT",
+        help="OPC UA server port for UaExpert / POL connections (default: 48050)",
     )
     args = parser.parse_args()
 
@@ -534,19 +696,85 @@ def main():
         arm.cleanup()
         sys.exit(1)
 
+    # ── Inspection service (optional — only if plugin declares service.py) ────
+    inspection_module = None
+    inspection_win    = None
+
+    if manifest.service_module and not args.no_inspection:
+        svc_path = os.path.join(plugin_dir, manifest.service_module + ".py")
+        if os.path.isfile(svc_path):
+            try:
+                from VisionForge.app.inspection.inspection_service import InspectionService
+                from VisionForge.app.inspection.inspection_module  import InspectionModule
+
+                svc_key  = f"_vf_devrun_{manifest.name}_{manifest.service_module}"
+                svc_spec = importlib.util.spec_from_file_location(svc_key, svc_path)
+                svc_mod  = importlib.util.module_from_spec(svc_spec)
+                sys.modules[svc_key] = svc_mod
+                svc_spec.loader.exec_module(svc_mod)
+
+                ServiceClass = getattr(svc_mod, manifest.service_class, None)
+                if ServiceClass is None or not issubclass(ServiceClass, InspectionService):
+                    print(
+                        f"[dev_runner] WARNING: '{manifest.service_class}' not found or "
+                        "not an InspectionService — inspection window skipped.",
+                        file=sys.stderr,
+                    )
+                else:
+                    service = ServiceClass()
+
+                    # Wire processor → service
+                    proc = getattr(panel, '_processor', None)
+                    if proc is not None:
+                        try:
+                            proc.result_ready.connect(service.on_result)
+                        except Exception as exc:
+                            print(f"[dev_runner] WARNING: could not connect result_ready: {exc}",
+                                  file=sys.stderr)
+
+                    # Keep processor running regardless of panel visibility
+                    if hasattr(panel, '_start_processor_persistent'):
+                        panel._start_processor_persistent()
+
+                    # Start OPC UA server
+                    inspection_module = InspectionModule(opc_port=args.opc_port)
+                    inspection_module.register_service(service, stack_index=0)
+                    inspection_module.start_server()
+
+                    # Inspection window
+                    inspection_win = _build_inspection_window(service, args.opc_port, inspection_module)
+                    inspection_win.show()
+
+                    print(
+                        f"[dev_runner] Inspection service '{service.tag_name}' loaded.\n"
+                        f"             OPC UA endpoint: opc.tcp://localhost:{args.opc_port}/",
+                        flush=True,
+                    )
+
+            except Exception:
+                import traceback
+                print(
+                    "[dev_runner] WARNING: failed to load inspection service:\n"
+                    + traceback.format_exc(),
+                    file=sys.stderr,
+                )
+
     # ── Main window ───────────────────────────────────────────────────────────
     class _DevWindow(QMainWindow):
         def closeEvent(self, event):
+            if inspection_module is not None:
+                try: inspection_module.stop_server()
+                except Exception: pass
             try: panel.cleanup()
             except Exception: pass
             try: camera.cleanup()
             except Exception: pass
             try: arm.cleanup()
             except Exception: pass
-            if status_win:
-                status_win.close()
-            if config_win:
-                config_win.close()
+            for w in (status_win, config_win, inspection_win):
+                if w:
+                    try: w.close()
+                    except Exception: pass
             event.accept()
 
     win = _DevWindow()

@@ -352,15 +352,12 @@ class MainWindow(QMainWindow):
         """Called by InspectionModule when POL starts a service — switches without confirmation."""
         self._do_switch(index)
 
-    def _on_pol_control_changed(self, active: bool) -> None:
-        """Show/hide POL banner on the InspectionTab of the (last) active service."""
+    def _on_pol_control_changed(self, tag_name: str, active: bool) -> None:
+        """Show/hide POL banner on the InspectionTab of the affected service."""
         if active:
             if self._inspection_module is None:
                 return
-            tag = self._inspection_module.get_active_service_tag()
-            if tag is None:
-                return
-            idx = self._inspection_module._service_stack_index.get(tag)
+            idx = self._inspection_module._service_stack_index.get(tag_name)
             if idx is None:
                 return
             widget = self._stack.widget(idx)
@@ -407,6 +404,8 @@ class MainWindow(QMainWindow):
                 return panel
 
             service = ServiceClass()
+            if hasattr(panel, 'tid_to_measurement') and hasattr(service, 'set_name_map'):
+                service.set_name_map(panel.tid_to_measurement)
             self._connect_service_to_processor(panel, service)
             if hasattr(panel, '_start_processor_persistent'):
                 panel._start_processor_persistent()
