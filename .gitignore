@@ -250,3 +250,7 @@ media/videos/
 
 # Datasets
 datasets/
+
+# Trained weights shipped with the repository (everything else *.pt / *.ckpt stays ignored)
+!app/tasks/seven_segment/weights/yolo/best.pt
+!app/tasks/seven_segment/weights/parseq/parseq_7seg.ckpt
