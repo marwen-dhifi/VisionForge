@@ -400,7 +400,7 @@ class ModuleTrackerPanel(QWidget):
 
         range_row.addWidget(QLabel("h"))
         self._load_hours_spin = QSpinBox()
-        self._load_hours_spin.setRange(0, 720)
+        self._load_hours_spin.setRange(0, 999)
         self._load_hours_spin.setValue(1)
         self._load_hours_spin.setFixedWidth(56)
         self._load_hours_spin.setStyleSheet(

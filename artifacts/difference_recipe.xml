@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<b2mml:BatchInformation xmlns:b2mml="http://www.mesa.org/xml/B2MML" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <b2mml:ListHeader><b2mml:ID>ListHeadID</b2mml:ID></b2mml:ListHeader>
+  <b2mml:MasterRecipe>
+    <b2mml:ID>DifferenceRecipe_1</b2mml:ID>
+    <b2mml:Version>1.0.0</b2mml:Version>
+    <b2mml:Header><b2mml:ProductID>MotionCheck</b2mml:ProductID><b2mml:ProductName>Motion Check</b2mml:ProductName></b2mml:Header>
+    <b2mml:ProcedureLogic>
+      <b2mml:Link><b2mml:ID>L1</b2mml:ID>
+        <b2mml:FromID><b2mml:FromIDValue>S1</b2mml:FromIDValue><b2mml:FromType>Step</b2mml:FromType><b2mml:IDScope>External</b2mml:IDScope></b2mml:FromID>
+        <b2mml:ToID><b2mml:ToIDValue>T1</b2mml:ToIDValue><b2mml:ToType>Transition</b2mml:ToType><b2mml:IDScope>External</b2mml:IDScope></b2mml:ToID>
+        <b2mml:LinkType>ControlLink</b2mml:LinkType></b2mml:Link>
+      <b2mml:Link><b2mml:ID>L2</b2mml:ID>
+        <b2mml:FromID><b2mml:FromIDValue>T1</b2mml:FromIDValue><b2mml:FromType>Transition</b2mml:FromType><b2mml:IDScope>External</b2mml:IDScope></b2mml:FromID>
+        <b2mml:ToID><b2mml:ToIDValue>S2</b2mml:ToIDValue><b2mml:ToType>Step</b2mml:ToType><b2mml:IDScope>External</b2mml:IDScope></b2mml:ToID>
+        <b2mml:LinkType>ControlLink</b2mml:LinkType></b2mml:Link>
+      <b2mml:Link><b2mml:ID>L3</b2mml:ID>
+        <b2mml:FromID><b2mml:FromIDValue>S2</b2mml:FromIDValue><b2mml:FromType>Step</b2mml:FromType><b2mml:IDScope>External</b2mml:IDScope></b2mml:FromID>
+        <b2mml:ToID><b2mml:ToIDValue>T2</b2mml:ToIDValue><b2mml:ToType>Transition</b2mml:ToType><b2mml:IDScope>External</b2mml:IDScope></b2mml:ToID>
+        <b2mml:LinkType>ControlLink</b2mml:LinkType></b2mml:Link>
+      <b2mml:Link><b2mml:ID>L4</b2mml:ID>
+        <b2mml:FromID><b2mml:FromIDValue>T2</b2mml:FromIDValue><b2mml:FromType>Transition</b2mml:FromType><b2mml:IDScope>External</b2mml:IDScope></b2mml:FromID>
+        <b2mml:ToID><b2mml:ToIDValue>S3</b2mml:ToIDValue><b2mml:ToType>Step</b2mml:ToType><b2mml:IDScope>External</b2mml:IDScope></b2mml:ToID>
+        <b2mml:LinkType>ControlLink</b2mml:LinkType></b2mml:Link>
+      <b2mml:Step><b2mml:ID>S1</b2mml:ID><b2mml:RecipeElementID>Init</b2mml:RecipeElementID><b2mml:Description>Init</b2mml:Description></b2mml:Step>
+      <b2mml:Step><b2mml:ID>S2</b2mml:ID><b2mml:RecipeElementID>001:JNBb-Ue2m-0cyA-g32B-2hv1</b2mml:RecipeElementID><b2mml:Description>Run difference_inspection</b2mml:Description></b2mml:Step>
+      <b2mml:Step><b2mml:ID>S3</b2mml:ID><b2mml:RecipeElementID>End</b2mml:RecipeElementID><b2mml:Description>End</b2mml:Description></b2mml:Step>
+      <b2mml:Transition><b2mml:ID>T1</b2mml:ID><b2mml:Condition>True</b2mml:Condition></b2mml:Transition>
+      <b2mml:Transition><b2mml:ID>T2</b2mml:ID><b2mml:Condition>Level services.difference_inspection.procedures.default.report_values.motion_level > 10.0</b2mml:Condition></b2mml:Transition>
+    </b2mml:ProcedureLogic>
+    <b2mml:RecipeElement><b2mml:ID>Init</b2mml:ID><b2mml:RecipeElementType>Begin</b2mml:RecipeElementType></b2mml:RecipeElement>
+    <b2mml:RecipeElement><b2mml:ID>End</b2mml:ID><b2mml:RecipeElementType>End</b2mml:RecipeElementType></b2mml:RecipeElement>
+    <b2mml:RecipeElement>
+      <b2mml:ID>001:JNBb-Ue2m-0cyA-g32B-2hv1</b2mml:ID>
+      <b2mml:Description>difference_inspection</b2mml:Description>
+      <b2mml:RecipeElementType>Operation</b2mml:RecipeElementType>
+      <b2mml:ActualEquipmentID>VisionForge</b2mml:ActualEquipmentID>
+    </b2mml:RecipeElement>
+  </b2mml:MasterRecipe>
+</b2mml:BatchInformation>

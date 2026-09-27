@@ -83,8 +83,8 @@ def build(version: str):
         _add_dir(zf, example_src, f"{top}/plugins/example_difference")
 
         # ── requirements-sdk.txt ──────────────────────────────────────────────
-        req_src = os.path.join(REPO, "requirements-sdk.txt")
-        _add(zf, req_src, f"{top}/requirements-sdk.txt")
+        req_src = os.path.join(REPO, "requirements.txt")
+        _add(zf, req_src, f"{top}/requirements.txt")
 
         # ── Convenience runner scripts ────────────────────────────────────────
         zf.writestr(

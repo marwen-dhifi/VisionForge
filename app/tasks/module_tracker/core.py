@@ -269,7 +269,13 @@ def render_map(modules_data: dict, map_scale_m: float,
 
     drawable = min(MAP_W_PX, MAP_H_PX) - 2 * MAP_MARGIN_PX
     scale    = map_scale_m / drawable
-    origin   = (MAP_MARGIN_PX, MAP_H_PX - MAP_MARGIN_PX)
+    # Camera sits at the LEFT EDGE, VERTICALLY CENTRED, so the map is symmetric
+    # about the Y axis as drawn: the axis labelled Y runs up from the camera and
+    # has the same room below it, so modules at negative Y are drawn instead of
+    # falling off the canvas. The X axis stays one-sided, running right.
+    # ⚠ MapWidget.paintEvent in widgets.py carries the same origin. BOTH
+    # renderers exist and the panel displays the Qt one; keep them consistent.
+    origin   = (MAP_MARGIN_PX, MAP_H_PX // 2)
 
     # ── Grid ────────────────────────────────────────────────────────────────
     step_minor = int(0.25 / scale)

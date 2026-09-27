@@ -166,8 +166,16 @@ class MapWidget(QWidget):
             return
 
         scale = self._map_scale_m / draw
+        # Camera sits at the LEFT EDGE, VERTICALLY CENTRED, so the map is
+        # symmetric about the Y axis as drawn: the axis labelled Y runs up from
+        # the camera and now has the same room below it, and modules at
+        # negative Y are drawn instead of falling off the widget. The X axis
+        # stays one-sided, running right from the camera.
+        # ⚠ core.render_map carries the same origin. BOTH renderers exist: this
+        # Qt painter is what the panel displays, core.render_map is the OpenCV
+        # one. Keep them consistent.
         ox = float(MARGIN)
-        oy = float(H - MARGIN)
+        oy = (float(HEADER) + float(H - MARGIN)) / 2.0
 
         # ── Header ────────────────────────────────────────────────────────────
         qp.fillRect(0, 0, W, HEADER, _BG_HEADER)
@@ -190,30 +198,44 @@ class MapWidget(QWidget):
 
         # ── Grid ──────────────────────────────────────────────────────────────
         step_px = 0.25 / scale      # pixels per 0.25 m minor interval
+        left   = float(MARGIN)
+        right  = float(MARGIN) + draw_w
+        top    = float(HEADER)
+        bottom = float(H - MARGIN)
         if step_px >= 7:
+            # Vertical lines: one-sided, running right from the camera, and now
+            # spanning the FULL drawable height because the origin is no longer
+            # at the bottom edge.
             i = 0
             while True:
                 x = ox + i * step_px
-                if x > ox + draw_w + 1:
+                if x > right + 1:
                     break
                 col = _GRID_MAJOR if i % 2 == 0 else _GRID_MINOR
                 qp.setPen(QPen(col, 1))
-                qp.drawLine(QPointF(x, HEADER + 1), QPointF(x, oy))
+                qp.drawLine(QPointF(x, top + 1), QPointF(x, bottom))
                 i += 1
+            # Horizontal lines: BOTH ways from the origin, so the grid is
+            # symmetric about the Y axis. Parity on j keeps a major line every
+            # 0.5 m above and below alike.
             j = 0
             while True:
-                y = oy - j * step_px
-                if y < HEADER:
+                y_up   = oy - j * step_px
+                y_down = oy + j * step_px
+                if y_up < top and y_down > bottom:
                     break
                 col = _GRID_MAJOR if j % 2 == 0 else _GRID_MINOR
                 qp.setPen(QPen(col, 1))
-                qp.drawLine(QPointF(ox, y), QPointF(ox + draw_w, y))
+                if top <= y_up <= bottom:
+                    qp.drawLine(QPointF(left, y_up), QPointF(right, y_up))
+                if j and top <= y_down <= bottom:
+                    qp.drawLine(QPointF(left, y_down), QPointF(right, y_down))
                 j += 1
 
         # Drawable-area border
         qp.setPen(QPen(_BORDER, 1))
         qp.setBrush(Qt.BrushStyle.NoBrush)
-        qp.drawRect(QRectF(ox, HEADER, draw_w, H - HEADER - MARGIN))
+        qp.drawRect(QRectF(left, top, draw_w, bottom - top))
 
         # ── Camera origin ──────────────────────────────────────────────────────
         ar  = math.radians(self._camera_angle)

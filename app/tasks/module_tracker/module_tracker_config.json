@@ -1,5 +1,5 @@
 {
-  "camera_angle_deg": 0.0,
+  "camera_angle_deg": -0.000859,
   "camera_height_offset": 0.5,
   "map_scale_m": 8.0,
   "default_module": {
@@ -7,5 +7,36 @@
     "height": 0.3,
     "length": 0.2
   },
-  "modules": {}
+  "modules": {
+    "0": {
+      "name": "Module 0",
+      "width": 0.4,
+      "height": 0.3,
+      "length": 0.2
+    },
+    "1": {
+      "name": "Module 1",
+      "width": 0.4,
+      "height": 0.3,
+      "length": 0.2
+    },
+    "5": {
+      "name": "Module 5",
+      "width": 0.4,
+      "height": 0.3,
+      "length": 0.2
+    },
+    "12": {
+      "name": "Module 12",
+      "width": 0.4,
+      "height": 0.3,
+      "length": 0.2
+    },
+    "25": {
+      "name": "Module 25",
+      "width": 0.4,
+      "height": 0.3,
+      "length": 0.2
+    }
+  }
 }
