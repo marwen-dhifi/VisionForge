@@ -4,7 +4,9 @@ InspectionTab — the "Inspection" sub-tab widget added to task panels.
 Contents:
   - POL warning banner (shown when external POL is controlling)
   - State indicator (colored label showing current MTP state)
-  - Manual control buttons (START / STOP / RESET / ABORT)
+  - Manual control buttons — the full command set of [2658-4], in two rows:
+      START / COMPLETE / RESTART / STOP / ABORT   (run and end a procedure)
+      PAUSE / RESUME / HOLD / UNHOLD / RESET      (interrupt one and recover)
   - Report values table (live-updated every result_ready frame)
 """
 
@@ -35,11 +37,19 @@ _STATE_COLORS = {
     'resetting':  '#FFB300',
 }
 
-# MTPPy command codes
+# MTPPy command codes — the full command set of [2658-4] §8.2.2.3.
+# The state machine accepts all ten; CommandEn says which are legal in the state the
+# service is currently in, and a command it does not permit is ignored, so every
+# button can be offered unconditionally.
+_CMD_RESET    = 2
 _CMD_START    = 4
 _CMD_STOP     = 8
-_CMD_RESET    = 2
+_CMD_HOLD     = 16
+_CMD_UNHOLD   = 32
+_CMD_PAUSE    = 64
+_CMD_RESUME   = 128
 _CMD_ABORT    = 256
+_CMD_RESTART  = 512
 _CMD_COMPLETE = 1024
 
 
@@ -94,17 +104,31 @@ class InspectionTab(QWidget):
         root.addWidget(self._separator())
 
         # ── Manual control buttons ────────────────────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        # Two rows, split the way the guideline splits the command set: the top row
+        # runs and ends a procedure, the bottom row interrupts one and recovers from
+        # the interruption. Colour carries the same meaning as the state indicator —
+        # green goes, amber interrupts, red terminates.
         self._btn_start    = self._make_btn('START',    '#00E676', self._cmd_start)
         self._btn_complete = self._make_btn('COMPLETE', '#00CFFF', self._cmd_complete)
+        self._btn_restart  = self._make_btn('RESTART',  '#00E676', self._cmd_restart)
         self._btn_stop     = self._make_btn('STOP',     '#FF4466', self._cmd_stop)
-        self._btn_reset    = self._make_btn('RESET',    '#FFB300', self._cmd_reset)
         self._btn_abort    = self._make_btn('ABORT',    '#FF4466', self._cmd_abort)
-        for btn in (self._btn_start, self._btn_complete, self._btn_stop,
-                    self._btn_reset, self._btn_abort):
-            btn_row.addWidget(btn)
-        root.addLayout(btn_row)
+
+        self._btn_pause    = self._make_btn('PAUSE',    '#FFB300', self._cmd_pause)
+        self._btn_resume   = self._make_btn('RESUME',   '#00E676', self._cmd_resume)
+        self._btn_hold     = self._make_btn('HOLD',     '#FFB300', self._cmd_hold)
+        self._btn_unhold   = self._make_btn('UNHOLD',   '#00E676', self._cmd_unhold)
+        self._btn_reset    = self._make_btn('RESET',    '#FFB300', self._cmd_reset)
+
+        for row_btns in ((self._btn_start, self._btn_complete, self._btn_restart,
+                          self._btn_stop, self._btn_abort),
+                         (self._btn_pause, self._btn_resume, self._btn_hold,
+                          self._btn_unhold, self._btn_reset)):
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(8)
+            for btn in row_btns:
+                btn_row.addWidget(btn)
+            root.addLayout(btn_row)
 
         root.addWidget(self._separator())
 
@@ -229,6 +253,11 @@ class InspectionTab(QWidget):
 
     def _cmd_start(self):    self._send_op_command(_CMD_START)
     def _cmd_complete(self): self._send_op_command(_CMD_COMPLETE)
+    def _cmd_restart(self):  self._send_op_command(_CMD_RESTART)
     def _cmd_stop(self):     self._send_op_command(_CMD_STOP)
-    def _cmd_reset(self):    self._send_op_command(_CMD_RESET)
     def _cmd_abort(self):    self._send_op_command(_CMD_ABORT)
+    def _cmd_pause(self):    self._send_op_command(_CMD_PAUSE)
+    def _cmd_resume(self):   self._send_op_command(_CMD_RESUME)
+    def _cmd_hold(self):     self._send_op_command(_CMD_HOLD)
+    def _cmd_unhold(self):   self._send_op_command(_CMD_UNHOLD)
+    def _cmd_reset(self):    self._send_op_command(_CMD_RESET)
